@@ -200,12 +200,19 @@ def main():
 
     def create_bricks():
         bricks_local = []
+
+        grid_width = COLS * BRICK_W + (COLS - 1) * BRICK_GAP
+
+        base_start_x = (WIDTH - grid_width) // 2
+
         for row in range(ROWS):
             y = TOP_MARGIN + row * (BRICK_H + BRICK_GAP)
             shift = (row % 2) * (BRICK_W // 2)
+
             for col in range(COLS):
-                x = SIDE_MARGIN + shift + col * (BRICK_W + BRICK_GAP)
+                x = base_start_x + shift + col * (BRICK_W + BRICK_GAP)
                 rect = pygame.Rect(x, y, BRICK_W, BRICK_H)
+
                 if rect.right > WIDTH - SIDE_MARGIN:
                     continue
 
@@ -297,27 +304,42 @@ def main():
                     if bounce_sound:
                         bounce_sound.play()
 
-                # Bricks 
+                # Bricks
                 hit_brick = None
-                for brick in bricks:
-                    if ball.rect.colliderect(brick.rect):
-                        hit_brick = brick
-                        break
+                if ball.vy < 0:  # ONLY when ball is moving upward
+                    for brick in bricks:
+                        if ball.rect.colliderect(brick.rect):
+                            hit_brick = brick
+                            break
 
                 if hit_brick:
-                    ball.vx, ball.vy = reflect_ball_on_rect(ball.rect, (ball.vx, ball.vy), hit_brick.rect)
+                    ball.vx, ball.vy = reflect_ball_on_rect(
+                        ball.rect, (ball.vx, ball.vy), hit_brick.rect
+                    )
+
+                    # Push ball slightly away to prevent double-hits
+                    ball.rect.x += int(ball.vx)
+                    ball.rect.y += int(ball.vy)
+
                     ball.speed_cap()
+
                     if brick_hit_sound:
                         brick_hit_sound.play()
 
                     hit_brick.hits_left -= 1
+
                     if hit_brick.hits_left <= 0:
-                        score += hit_brick.points
+                        score += hit_brick.points   
+
                         if hit_brick.kind == "power":
-                            spawn_ball(hit_brick.rect.centerx, hit_brick.rect.centery,
-                                       vx = random.choice([-BALL_SPEED, BALL_SPEED]),
-                                       vy = - BALL_SPEED)
+                            spawn_ball(
+                            hit_brick.rect.centerx,
+                            hit_brick.rect.centery,
+                            vx = random.choice([-BALL_SPEED, BALL_SPEED]),
+                            vy = -BALL_SPEED
+                            )
                         bricks.remove(hit_brick)
+
                     else:
                         score += 20
 
@@ -362,7 +384,7 @@ def main():
             msg = big_font.render("GAME OVER - You suck!", True, (237, 14, 14))
             sub = font.render("Press R to restart, ESC to quit", True, (230, 230, 230))
             screen.blit(msg, msg.get_rect(center = (WIDTH // 2, HEIGHT // 2 - 20)))
-            screen.blit(sub, sub.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 40)))
+            screen.blit(sub, sub.get_rect(center = (WIDTH // 2, HEIGHT // 2 + 40)))
 
         if win:
             msg = big_font.render("Congrats, you won the game!", True, (120, 255, 160))
