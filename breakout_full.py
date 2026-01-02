@@ -227,6 +227,7 @@ def main():
                     brick.points = 150
 
                 bricks_local.append(brick)
+
         return bricks_local
 
     bricks = create_bricks()
@@ -383,14 +384,14 @@ def main():
         if game_over:
             msg = big_font.render("GAME OVER - You suck!", True, (237, 14, 14))
             sub = font.render("Press R to restart, ESC to quit", True, (230, 230, 230))
-            screen.blit(msg, msg.get_rect(center = (WIDTH // 2, HEIGHT // 2 - 20)))
-            screen.blit(sub, sub.get_rect(center = (WIDTH // 2, HEIGHT // 2 + 40)))
+            screen.blit(msg, msg.get_rect(center = (WIDTH // 2, HEIGHT // 2 + 30)))
+            screen.blit(sub, sub.get_rect(center = (WIDTH // 2, HEIGHT // 2 + 75)))
 
         if win:
             msg = big_font.render("Congrats, you won the game!", True, (120, 255, 160))
             sub = font.render("Press R to restart, ESC to quit", True, (230, 230, 230))
-            screen.blit(msg, msg.get_rect(center = (WIDTH // 2, HEIGHT // 2 - 20)))
-            screen.blit(sub, sub.get_rect(center = (WIDTH // 2, HEIGHT // 2 + 40)))
+            screen.blit(msg, msg.get_rect(center = (WIDTH // 2, HEIGHT // 2 + 30)))
+            screen.blit(sub, sub.get_rect(center = (WIDTH // 2, HEIGHT // 2 + 75)))
 
         pygame.display.flip()
 
