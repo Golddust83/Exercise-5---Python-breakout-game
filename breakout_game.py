@@ -131,6 +131,7 @@ class Ball:
     def __init__(self, rect, vel):
         self.rect = rect
         self.vx, self.vy = vel
+        self.can_hit_brick = True
 
     def speed_cap(self):
         self.vx = clamp(self.vx, - BALL_MAX_SPEED, BALL_MAX_SPEED)
@@ -302,47 +303,60 @@ def main():
                     ball.vx = clamp(ball.vx + offset * 3.5, - BALL_MAX_SPEED, BALL_MAX_SPEED)
                     ball.vy = -abs(ball.vy)
                     ball.speed_cap()
+                    ball.can_hit_brick = True
+
                     if bounce_sound:
                         bounce_sound.play()
 
-                # Bricks
+                # Bricks (solid always, but only 1 "counting" hit per bat bounce)
                 hit_brick = None
-                if ball.vy < 0:  # ONLY when ball is moving upward
-                    for brick in bricks:
-                        if ball.rect.colliderect(brick.rect):
-                            hit_brick = brick
-                            break
+                
+                for brick in bricks:
+                    if ball.rect.colliderect(brick.rect):
+                        hit_brick = brick
+                        break
 
                 if hit_brick:
+                    was_moving_up = (ball.vy < 0)
+
+                    # Always bounce off bricks (even when "locked")
                     ball.vx, ball.vy = reflect_ball_on_rect(
-                        ball.rect, (ball.vx, ball.vy), hit_brick.rect
+                    ball.rect, (ball.vx, ball.vy), hit_brick.rect
                     )
 
-                    # Push ball slightly away to prevent double-hits
+                    # Push ball slightly away to prevent repeated collision
                     ball.rect.x += int(ball.vx)
                     ball.rect.y += int(ball.vy)
 
+                    # OPTIONAL: force the ball to go downward after touching any brick
+                    ball.vy = abs(ball.vy)
+
                     ball.speed_cap()
 
-                    if brick_hit_sound:
-                        brick_hit_sound.play()
+                    # Only the first brick hit after a bat bounce should "count"
+                    if ball.can_hit_brick and was_moving_up:
+                        ball.can_hit_brick = False
 
-                    hit_brick.hits_left -= 1
+                        if brick_hit_sound:
+                            brick_hit_sound.play()
 
-                    if hit_brick.hits_left <= 0:
-                        score += hit_brick.points   
+                        hit_brick.hits_left -= 1
 
-                        if hit_brick.kind == "power":
-                            spawn_ball(
-                            hit_brick.rect.centerx,
-                            hit_brick.rect.centery,
-                            vx = random.choice([-BALL_SPEED, BALL_SPEED]),
-                            vy = -BALL_SPEED
-                            )
-                        bricks.remove(hit_brick)
+                        if hit_brick.hits_left <= 0:
+                            score += hit_brick.points
 
-                    else:
-                        score += 20
+                            if hit_brick.kind == "power":
+                                spawn_ball(
+                                    hit_brick.rect.centerx,
+                                    hit_brick.rect.centery,
+                                    vx = random.choice([-BALL_SPEED, BALL_SPEED]),
+                                    vy = -BALL_SPEED
+                                    )
+
+                            bricks.remove(hit_brick)
+                        
+                        else:
+                            score += 20
 
             for b in balls_to_remove:
                 if b in balls:
