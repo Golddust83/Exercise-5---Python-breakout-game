@@ -199,7 +199,7 @@ def main():
 
     spawn_ball(bat_rect.centerx, bat_rect.top - 20)
 
-    def create_bricks():
+    def bricks_layout():
         bricks_local = []
 
         grid_width = COLS * BRICK_W + (COLS - 1) * BRICK_GAP
@@ -231,7 +231,7 @@ def main():
 
         return bricks_local
 
-    bricks = create_bricks()
+    bricks = bricks_layout()
 
     def reset_round():
         balls.clear()
@@ -254,7 +254,7 @@ def main():
                 if (game_over or win) and event.key == pygame.K_r:
                     score = 0
                     lives = 5
-                    bricks = create_bricks()
+                    bricks = bricks_layout()
                     game_over = False
                     win = False
                     reset_round()
