@@ -188,7 +188,7 @@ def main():
 
     balls = []
 
-    def spawn_ball(centerx, centery, vx = None, vy = None):
+    def launch_ball(centerx, centery, vx = None, vy = None):
         rect = pygame.Rect(0, 0, ball_size[0], ball_size[1])
         rect.center = (centerx, centery)
         if vx is None:
@@ -197,7 +197,7 @@ def main():
             vy = - BALL_SPEED
         balls.append(Ball(rect, (vx, vy)))
 
-    spawn_ball(bat_rect.centerx, bat_rect.top - 20)
+    launch_ball(bat_rect.centerx, bat_rect.top - 20)
 
     def bricks_layout():
         bricks_local = []
@@ -218,13 +218,13 @@ def main():
                     continue
 
                 if row < 2:
-                    brick = Brick(rect, hits_left = 2, points = 120, kind = "hard")
+                    brick = Brick(rect, hits_left = 3, points = 120, kind = "hard")
                 else:
-                    brick = Brick(rect, hits_left = 1, points = 60, kind = "soft")
+                    brick = Brick(rect, hits_left = 2, points = 60, kind = "soft")
 
                 if random.random() < 0.10 and row >= 2:
                     brick.kind = "power"
-                    brick.hits_left = 1
+                    brick.hits_left = 2
                     brick.points = 150
 
                 bricks_local.append(brick)
@@ -236,7 +236,7 @@ def main():
     def reset_round():
         balls.clear()
         bat_rect.centerx = WIDTH // 2
-        spawn_ball(bat_rect.centerx, bat_rect.top - 20)
+        launch_ball(bat_rect.centerx, bat_rect.top - 20)
 
     running = True    
     game_over = False
@@ -346,7 +346,7 @@ def main():
                             score += hit_brick.points
 
                             if hit_brick.kind == "power":
-                                spawn_ball(
+                                launch_ball(
                                     hit_brick.rect.centerx,
                                     hit_brick.rect.centery,
                                     vx = random.choice([-BALL_SPEED, BALL_SPEED]),
@@ -380,7 +380,7 @@ def main():
 
         for brick in bricks:
             pygame.draw.rect(screen, brick.color(), brick.rect, border_radius = 6)
-            if brick.kind == "hard" and brick.hits_left == 2:
+            if brick.kind == "hard" and brick.hits_left > 1:
                 inner = brick.rect.inflate(-12, -12)
                 pygame.draw.rect(screen, (255, 210, 170), inner, width = 2, border_radius = 6)
 
