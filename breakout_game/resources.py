@@ -2,8 +2,7 @@ import os
 import pygame
 
 
-def safe_load_sound(path):
-
+def safe_load_sound(path: str):
     try:
         if os.path.exists(path):
             return pygame.mixer.Sound(path)
@@ -12,8 +11,7 @@ def safe_load_sound(path):
     return None
 
 
-def safe_load_image(path):
-
+def safe_load_image(path: str):
     try:
         if os.path.exists(path):
             return pygame.image.load(path).convert_alpha()
@@ -22,8 +20,7 @@ def safe_load_image(path):
     return None
 
 
-def safe_load_background(path):
-    
+def safe_load_background(path: str):
     try:
         if os.path.exists(path):
             return pygame.image.load(path).convert()
@@ -34,24 +31,24 @@ def safe_load_background(path):
 
 class Resources:
     """
-    Simple cache so each asset load only once
+    Asset cache. Game delegates loading to this class.
     """
     def __init__(self):
         self._images = {}
         self._sounds = {}
         self._backgrounds = {}
 
-    def image(self, path):
+    def image(self, path: str):
         if path not in self._images:
             self._images[path] = safe_load_image(path)
         return self._images[path]
 
-    def sound(self, path):
+    def sound(self, path: str):
         if path not in self._sounds:
             self._sounds[path] = safe_load_sound(path)
         return self._sounds[path]
 
-    def background(self, path):
+    def background(self, path: str):
         if path not in self._backgrounds:
             self._backgrounds[path] = safe_load_background(path)
         return self._backgrounds[path]

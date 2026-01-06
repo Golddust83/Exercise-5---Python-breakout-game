@@ -1,5 +1,5 @@
 """
-Start game with terminal: python -m breakout_game.main
+Start game from terminal: python -m breakout_game.main
 """
 
 from .game_logic import Game

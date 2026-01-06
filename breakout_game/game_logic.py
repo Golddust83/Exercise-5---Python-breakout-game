@@ -2,36 +2,49 @@ import os
 import random
 import pygame
 
-from .config import SCREEN, BAT, BALL, BRICKS, ASSETS, AUDIO, RULES
+from .config import SCREEN, BALL, BRICKS, ASSETS, AUDIO, RULES
 from .resources import Resources
-from .utils import clamp, reflect_ball_on_rect
+from .state import GameState
+from .scoring import Scoring
+from .collision import CollisionSystem
+
 from .objects.ball import Ball
 from .objects.bricks import Brick
 from .objects.bat import Bat
 
 
 class Game:
+
     def __init__(self):
+
         pygame.init()
         pygame.display.set_caption(SCREEN.caption)
 
         self.clock = pygame.time.Clock()
         self.screen = pygame.display.set_mode((SCREEN.width, SCREEN.height))
 
-        # Audio init
+        # Composition: Game "has" these helper objects
+        self.res = Resources()
+        self.scoring = Scoring(score = 0)
+
+        # Audio init (safe)
         try:
             pygame.mixer.init()
         except pygame.error:
             pass
-
-        self.res = Resources()
 
         self.brick_hit_sound = self.res.sound(ASSETS.brick_hit_sfx)
         self.bounce_sound = self.res.sound(ASSETS.bounce_sfx)
         if self.bounce_sound:
             self.bounce_sound.set_volume(AUDIO.bounce_volume)
 
-        # Music init
+        # Delegation: collisions handled by CollisionSystem
+        self.collision = CollisionSystem(
+            bounce_sound = self.bounce_sound,
+            brick_hit_sound = self.brick_hit_sound
+        )
+
+        # Music init (safe)
         try:
             if os.path.exists(ASSETS.music_file):
                 pygame.mixer.music.load(ASSETS.music_file)
@@ -40,37 +53,50 @@ class Game:
         except pygame.error:
             pass
 
-        # Ball sprite image + size
+        # Load images
         self.ball_image = self.res.image(ASSETS.ball_image_file)
+
         if self.ball_image:
             self.ball_size = self.ball_image.get_rect().size
         else:
             self.ball_size = BALL.fallback_size
 
-        # Background
         self.background_img = self.res.background(ASSETS.bg_image)
+
         if self.background_img:
             self.background_img = pygame.transform.scale(
                 self.background_img, (SCREEN.width, SCREEN.height)
             )
 
+        # Fonts
         self.font = pygame.font.SysFont(None, 32)
         self.big_font = pygame.font.SysFont(None, 64)
 
+        # Objects (instances) + Collections
         self.bat = Bat()
+        self.balls: list[Ball] = []
+        self.bricks: list[Brick] = self.bricks_layout()
 
-        self.score = 0
+        # Polymorphism demo list: contains different Sprite subclasses
+        self.sprites = []
+
         self.lives = RULES.start_lives
-        self.balls = []
-        self.bricks = self.bricks_layout()
-
+        self.state = GameState.PLAYING
         self.running = True
-        self.game_over = False
-        self.win = False
 
         self.launch_ball(self.bat.rect.centerx, self.bat.rect.top - 20)
+        self.rebuild_sprite_list()
 
-    
+    @property
+
+    def score(self) -> int:        
+        return self.scoring.score
+
+    # Polymorphism setup 
+    def rebuild_sprite_list(self) -> None:
+        self.sprites = [self.bat] + self.bricks + self.balls
+
+    # ---------- Factory methods ----------
     def launch_ball(self, centerx, centery, vx = None, vy = None):
         rect = pygame.Rect(0, 0, self.ball_size[0], self.ball_size[1])
         rect.center = (centerx, centery)
@@ -93,7 +119,7 @@ class Game:
             y = BRICKS.top_margin + row * (BRICKS.height + BRICKS.gap)
             shift = (row % 2) * (BRICKS.width // 2)
 
-            for col in range(BRICKS.cols):
+            for col in range(BRICKS.cols):                
                 x = base_start_x + shift + col * (BRICKS.width + BRICKS.gap)
                 rect = pygame.Rect(x, y, BRICKS.width, BRICKS.height)
 
@@ -101,25 +127,39 @@ class Game:
                     continue
 
                 if row < 2:
-                    brick = Brick(rect, hits_left=3, points=120, kind="hard")
+                    brick = Brick(rect, hits_left = 3, points = 120, kind = "hard")
                 else:
-                    brick = Brick(rect, hits_left=2, points=60, kind="soft")
+                    brick = Brick(rect, hits_left = 2, points = 60, kind = "soft")
 
                 if random.random() < BRICKS.power_chance and row >= 2:
                     brick.kind = "power"
-                    brick.hits_left = 2
+                    brick.hits_left = 3
                     brick.points = 150
 
                 bricks_local.append(brick)
 
         return bricks_local
 
+    # Game flow
     def reset_round(self):
+
         self.balls.clear()
         self.bat.rect.centerx = SCREEN.width // 2
         self.launch_ball(self.bat.rect.centerx, self.bat.rect.top - 20)
+        self.rebuild_sprite_list()
+
+    def restart_game(self):
+
+        self.scoring.score = 0
+        self.lives = RULES.start_lives
+        self.bricks = self.bricks_layout()
+        self.balls.clear()
+        self.state = GameState.PLAYING
+        self.launch_ball(self.bat.rect.centerx, self.bat.rect.top - 20)
+        self.rebuild_sprite_list()
 
     def handle_events(self):
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -128,151 +168,99 @@ class Game:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
 
-                if (self.game_over or self.win) and event.key == pygame.K_r:
-                    self.score = 0
-                    self.lives = RULES.start_lives
-                    self.bricks = self.bricks_layout()
-                    self.game_over = False
-                    self.win = False
-                    self.reset_round()
+                if self.state in (GameState.LOST, GameState.WON) and event.key == pygame.K_r:
+                    self.restart_game()
 
     def update(self):
+
         keys = pygame.key.get_pressed()
 
-        if not (self.game_over or self.win):
-            self.bat.update(keys)
+        if self.state != GameState.PLAYING:
+            return
 
-        if not (self.game_over or self.win):
-            balls_to_remove = []
+        # Polymorphism: update different object types via same method name
+        for s in self.sprites:
+            s.update(keys = keys)
 
-            for ball in self.balls:
-                ball.update()
+        balls_to_remove: list[Ball] = []
 
-                # Walls
-                if ball.rect.left <= 0:
-                    ball.rect.left = 0
-                    ball.vx = abs(ball.vx)
-                    if self.bounce_sound:
-                        self.bounce_sound.play()
+        # Collisions + rules (delegation)
+        for ball in self.balls:
 
-                elif ball.rect.right >= SCREEN.width:
-                    ball.rect.right = SCREEN.width
-                    ball.vx = -abs(ball.vx)
-                    if self.bounce_sound:
-                        self.bounce_sound.play()
+            if self.collision.handle_walls_and_bottom(ball):
+                balls_to_remove.append(ball)
+                continue
 
-                if ball.rect.top <= 0:
-                    ball.rect.top = 0
-                    ball.vy = abs(ball.vy)
-                    if self.bounce_sound:
-                        self.bounce_sound.play()
+            self.collision.handle_bat(ball, self.bat)
 
-                # Bottom (lost)
-                if ball.rect.top > SCREEN.height:
-                    balls_to_remove.append(ball)
-                    continue
+            hit_brick = self.collision.handle_bricks(ball, self.bricks)
 
-                # Bat bounce
-                if ball.rect.colliderect(self.bat.rect) and ball.vy > 0:
-                    ball.rect.bottom = self.bat.rect.top
-                    offset = (ball.rect.centerx - self.bat.rect.centerx) / (self.bat.rect.width / 2)
-                    ball.vx = clamp(ball.vx + offset * 3.5, -BALL.max_speed, BALL.max_speed)
-                    ball.vy = -abs(ball.vy)
-                    ball.speed_cap()
-                    ball.can_hit_brick = True
+            if hit_brick:
+                destroyed = hit_brick.hit()
 
-                    if self.bounce_sound:
-                        self.bounce_sound.play()
+                if destroyed:
+                    self.scoring.add_for_brick_destroyed(hit_brick)
 
-                # Bricks
-                hit_brick = None
-                for brick in self.bricks:
-                    if ball.rect.colliderect(brick.rect):
-                        hit_brick = brick
-                        break
+                    # Power brick effect: extra ball
+                    if hit_brick.kind == "power":
+                        self.launch_ball(
+                            hit_brick.rect.centerx,
+                            hit_brick.rect.centery,
+                            vx = random.choice([-BALL.speed, BALL.speed]),
+                            vy = -BALL.speed
+                        )
 
-                if hit_brick:
-                    was_moving_up = (ball.vy < 0)
+                    self.bricks.remove(hit_brick)
 
-                    ball.vx, ball.vy = reflect_ball_on_rect(
-                        ball.rect, (ball.vx, ball.vy), hit_brick.rect
-                    )
+        # Remove lost balls
+        for b in balls_to_remove:
 
-                    ball.rect.x += int(ball.vx)
-                    ball.rect.y += int(ball.vy)
+            if b in self.balls:
+                self.balls.remove(b)
 
-                    if RULES.force_ball_down_after_brick:
-                        ball.vy = abs(ball.vy)
+        # Lives/state checks
+        if len(self.balls) == 0:
+            self.lives -= 1
 
-                    ball.speed_cap()
+            if self.lives <= 0:
+                self.state = GameState.LOST
+            else:
+                self.reset_round()
 
-                    if ball.can_hit_brick and was_moving_up:
-                        ball.can_hit_brick = False
+        if len(self.bricks) == 0:
+            self.state = GameState.WON
 
-                        if self.brick_hit_sound:
-                            self.brick_hit_sound.play()
-
-                        destroyed, points = hit_brick.hit()
-                        self.score += points
-
-                        if destroyed:
-                            if hit_brick.kind == "power":
-                                self.launch_ball(
-                                    hit_brick.rect.centerx,
-                                    hit_brick.rect.centery,
-                                    vx = random.choice([-BALL.speed, BALL.speed]),
-                                    vy = -BALL.speed
-                                )
-                            self.bricks.remove(hit_brick)
-
-            for b in balls_to_remove:
-                if b in self.balls:
-                    self.balls.remove(b)
-
-            if len(self.balls) == 0:
-                self.lives -= 1
-                if self.lives <= 0:
-                    self.game_over = True
-                else:
-                    self.reset_round()
-
-            if len(self.bricks) == 0:
-                self.win = True
+        # Keep polymorphism list in sync with collections
+        self.rebuild_sprite_list()
 
     def draw(self):
+
         if self.background_img:
             self.screen.blit(self.background_img, (0, 0))
         else:
             self.screen.fill((18, 18, 24))
 
-        # Bricks draw
-        for brick in self.bricks:
-            brick.draw(self.screen)
-
-        pygame.draw.rect(self.screen, (14, 237, 233), self.bat.rect, border_radius = 10)
-
-        for ball in self.balls:
-            if self.ball_image:
-                self.screen.blit(self.ball_image, ball.rect)
-            else:
-                pygame.draw.ellipse(self.screen, (240, 240, 240), ball.rect)
+        # Polymorphism: draw different object types via same method name
+        for s in self.sprites:
+            s.draw(self.screen, image = self.ball_image)
 
         ui = self.font.render(
             f"Score: {self.score}    Lives: {self.lives}    Balls: {len(self.balls)}",
-            True,
-            (235, 235, 235)
+            True, (235, 235, 235)
         )
         self.screen.blit(ui, (18, 16))
 
-        if self.game_over:
+        if self.state == GameState.LOST:
+
             msg = self.big_font.render("GAME OVER - You suck!", True, (237, 14, 14))
-            sub = self.font.render("Press R to restart, ESC to quit", True, (230, 230, 230))
+            sub = self.font.render("Press R to restart, ESC to quit", True, (255, 255, 255))
             self.screen.blit(msg, msg.get_rect(center=(SCREEN.width // 2, SCREEN.height // 2 + 30)))
             self.screen.blit(sub, sub.get_rect(center=(SCREEN.width // 2, SCREEN.height // 2 + 75)))
 
-        if self.win:
+        if self.state == GameState.WON:
+            
             msg = self.big_font.render("Congrats, you won the game!", True, (120, 255, 160))
-            sub = self.font.render("Press R to restart, ESC to quit", True, (230, 230, 230))
+            sub = self.font.render("Press R to restart, ESC to quit", True, (255, 255, 255))
             self.screen.blit(msg, msg.get_rect(center=(SCREEN.width // 2, SCREEN.height // 2 + 30)))
             self.screen.blit(sub, sub.get_rect(center=(SCREEN.width // 2, SCREEN.height // 2 + 75)))
 
