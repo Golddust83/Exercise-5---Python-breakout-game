@@ -27,7 +27,7 @@ class BallConfig:
 
     speed: int = 4
     max_speed: int = 6
-    fallback_size: tuple[int, int] = (15, 15)
+    fallback_size: tuple[int, int] = (18, 18)
 
 
 @dataclass(frozen = True)
